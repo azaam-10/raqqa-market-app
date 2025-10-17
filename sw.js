@@ -1,9 +1,10 @@
 const CACHE_NAME = 'raqqa-market-cache-v4'; // Bumped version for update
-const APP_SHELL_URLS = [
-  './', // Cache the root URL
-  './index.html',
-  './manifest.json',
-  './icons/icon.svg'
+const const APP_SHELL_URLS = [
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/icons/icon-192x192.png',
+  '/icons/icon-512x512.png'
 ];
 
 self.addEventListener('install', event => {
