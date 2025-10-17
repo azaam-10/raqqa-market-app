@@ -3,8 +3,7 @@ const urlsToCache = [
   './',
   './index.html',
   './manifest.json',
-  './icons/icon-192x192.png',
-  './icons/icon-512x512.png'
+  './icons/icon.svg'
 ];
 
 // On install, cache the app shell.
@@ -101,8 +100,8 @@ self.addEventListener('push', event => {
   const title = data.title || 'سوق محافظة الرقة';
   const options = {
     body: data.body || 'لديك إشعار جديد.',
-    icon: './icons/icon-192x192.png',
-    badge: './icons/icon-192x192.png',
+    icon: './icons/icon.svg',
+    badge: './icons/icon.svg',
     vibrate: [200, 100, 200],
     data: {
       url: data.url || '/',
