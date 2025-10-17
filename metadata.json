@@ -1,0 +1,9 @@
+{
+  "name": "Copy of Raqqa Market App",
+  "description": "An application for a marketplace with user authentication (Login, Signup, Verification) using Supabase. The UI is designed for Arabic (RTL) with a default dark theme.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera",
+    "geolocation"
+  ]
+}
