@@ -1,4 +1,4 @@
-const CACHE_NAME = 'raqqa-market-cache-v2'; // Bumped version for update
+const CACHE_NAME = 'raqqa-market-cache-v3'; // Bumped version for update
 const urlsToCache = [
   './',
   './index.html',
@@ -15,7 +15,6 @@ self.addEventListener('install', event => {
         console.log('Service Worker: Caching App Shell');
         return cache.addAll(urlsToCache);
       })
-      // Don't skipWaiting here, let the user decide via the popup
   );
 });
 
@@ -48,38 +47,63 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Fetch event: Cache falling back to network strategy
+// Fetch event: Handles requests for a Progressive Web App (PWA)
 self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
 
   // Always go to the network for Supabase API calls and non-GET requests.
   if (url.hostname.includes('supabase.co') || request.method !== 'GET') {
-    // For POST, PUT, DELETE, etc., always use the network.
-    // This is crucial for authentication and data mutations.
-    event.respondWith(fetch(request));
+    return; // Let the browser handle it.
+  }
+
+  // For navigation requests (e.g., opening the app or navigating to a new page),
+  // use a "network-first, falling back to cache" strategy.
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      (async () => {
+        try {
+          // Try to fetch from the network first.
+          const networkResponse = await fetch(request);
+          return networkResponse;
+        } catch (error) {
+          // If the network fails (e.g., offline), serve the main app shell from the cache.
+          console.log('Network request for navigation failed, serving app shell from cache.');
+          const cache = await caches.open(CACHE_NAME);
+          // The './index.html' must be in the cache from the 'install' event.
+          const cachedResponse = await cache.match('./index.html');
+          return cachedResponse;
+        }
+      })()
+    );
     return;
   }
 
-  // For all other GET requests, use a "Cache then Network" strategy.
+  // For all other assets (CSS, JS, images), use a "cache-first" strategy.
   event.respondWith(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.match(request).then(cachedResponse => {
-        const fetchPromise = fetch(request).then(networkResponse => {
-          // If we get a valid response, update the cache.
-          if (networkResponse && networkResponse.status === 200) {
-            cache.put(request, networkResponse.clone());
-          }
-          return networkResponse;
-        }).catch(err => {
-          // Network failed, this will be handled by the cachedResponse being returned if it exists.
-          console.warn(`Service Worker: Network request for ${request.url} failed.`, err);
-        });
-
-        // Return cached response immediately if available, otherwise wait for the network response.
-        return cachedResponse || fetchPromise;
-      });
-    })
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const cachedResponse = await cache.match(request);
+      
+      // If we have a response in the cache, return it.
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      
+      // If not in cache, fetch from network, cache it, and return response.
+      try {
+        const networkResponse = await fetch(request);
+        // Ensure we got a valid response before caching.
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          await cache.put(request, responseToCache);
+        }
+        return networkResponse;
+      } catch (error) {
+        console.error('Fetch failed for asset:', request.url, error);
+        throw error;
+      }
+    })()
   );
 });
 
