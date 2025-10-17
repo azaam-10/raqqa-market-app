@@ -1,26 +1,28 @@
-const CACHE_NAME = 'raqqa-market-cache-v3'; // Bumped version for update
-const urlsToCache = [
-  './',
+const CACHE_NAME = 'raqqa-market-cache-v4'; // Bumped version for update
+const APP_SHELL_URLS = [
+  './', // Cache the root URL
   './index.html',
   './manifest.json',
   './icons/icon.svg'
 ];
 
-// On install, cache the app shell.
 self.addEventListener('install', event => {
-  console.log('Service Worker: Install Event');
+  console.log('Service Worker: Install Event v4');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Service Worker: Caching App Shell');
-        return cache.addAll(urlsToCache);
+        console.log('Service Worker: Caching App Shell v4');
+        return cache.addAll(APP_SHELL_URLS);
+      })
+      .then(() => {
+        // Force the waiting service worker to become the active service worker.
+        return self.skipWaiting();
       })
   );
 });
 
-// On activate, take control and clean up old caches.
 self.addEventListener('activate', event => {
-  console.log('Service Worker: Activate Event');
+  console.log('Service Worker: Activate Event v4');
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
     caches.keys().then(cacheNames => {
@@ -33,82 +35,54 @@ self.addEventListener('activate', event => {
         })
       );
     }).then(() => {
-      console.log('Service Worker: Claiming clients');
-      return self.clients.claim(); // Take control of all open clients
+      console.log('Service Worker: Claiming clients v4');
+      return self.clients.claim();
     })
   );
 });
 
-// Listen for message from client to skip waiting.
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    console.log('Service Worker: Received SKIP_WAITING message, activating new worker.');
-    self.skipWaiting();
-  }
-});
-
-// Fetch event: Handles requests for a Progressive Web App (PWA)
 self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Always go to the network for Supabase API calls and non-GET requests.
-  if (url.hostname.includes('supabase.co') || request.method !== 'GET') {
+  // Always go to the network for API calls, external resources, and non-GET requests.
+  if (url.hostname.includes('supabase.co') || url.hostname.includes('aistudiocdn.com') || url.hostname.includes('googleapis.com') || url.hostname.includes('gstatic.com') || url.hostname.includes('unpkg.com') || request.method !== 'GET') {
     return; // Let the browser handle it.
   }
 
-  // For navigation requests (e.g., opening the app or navigating to a new page),
-  // use a "network-first, falling back to cache" strategy.
+  // For navigation requests, serve the app shell (index.html) from the cache first.
   if (request.mode === 'navigate') {
     event.respondWith(
-      (async () => {
-        try {
-          // Try to fetch from the network first.
-          const networkResponse = await fetch(request);
-          return networkResponse;
-        } catch (error) {
-          // If the network fails (e.g., offline), serve the main app shell from the cache.
-          console.log('Network request for navigation failed, serving app shell from cache.');
-          const cache = await caches.open(CACHE_NAME);
-          // The './index.html' must be in the cache from the 'install' event.
-          const cachedResponse = await cache.match('./index.html');
-          return cachedResponse;
-        }
-      })()
+      caches.match('./index.html', { cacheName: CACHE_NAME })
+        .then(response => {
+          return response || fetch(request);
+        })
     );
     return;
   }
 
-  // For all other assets (CSS, JS, images), use a "cache-first" strategy.
+  // For other assets, use a "cache-first" strategy.
   event.respondWith(
-    (async () => {
-      const cache = await caches.open(CACHE_NAME);
-      const cachedResponse = await cache.match(request);
-      
-      // If we have a response in the cache, return it.
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      
-      // If not in cache, fetch from network, cache it, and return response.
-      try {
-        const networkResponse = await fetch(request);
-        // Ensure we got a valid response before caching.
-        if (networkResponse && networkResponse.status === 200) {
-          const responseToCache = networkResponse.clone();
-          await cache.put(request, responseToCache);
+    caches.match(request, { cacheName: CACHE_NAME })
+      .then(cachedResponse => {
+        if (cachedResponse) {
+          return cachedResponse;
         }
-        return networkResponse;
-      } catch (error) {
-        console.error('Fetch failed for asset:', request.url, error);
-        throw error;
-      }
-    })()
+
+        return fetch(request).then(networkResponse => {
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then(cache => {
+              cache.put(request, responseToCache);
+            });
+          }
+          return networkResponse;
+        });
+      })
   );
 });
 
-
-// --- PUSH NOTIFICATION LOGIC (unchanged) ---
+// --- PUSH NOTIFICATION LOGIC ---
 self.addEventListener('push', event => {
   let data;
   try {
@@ -139,9 +113,7 @@ self.addEventListener('push', event => {
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-
   const urlToOpen = new URL(event.notification.data.url || '/', self.location.origin).href;
-
   event.waitUntil(
     clients.matchAll({
       type: 'window',
